@@ -37,6 +37,9 @@ export type Xfer = {
   type: "TRX" | "TRC20";
 };
 
+// Official USDT contract address on Tron (in Hex format)
+const USDT_CONTRACT_HEX = "41a614f803b6fd780986a42c78ec9c7f77e6ded13c";
+
 export function decode(block: any): Xfer[] {
   const out: Xfer[] = [];
   for (const tx of block.transactions ?? []) {
@@ -47,6 +50,7 @@ export function decode(block: any): Xfer[] {
     for (const c of tx.raw_data.contract ?? []) {
       const v = c.parameter.value;
 
+      // 1. Native TRX Transfers
       if (c.type === "TransferContract" && typeof v.amount === "number") {
         out.push({
           txid: tx.txID,
@@ -55,7 +59,13 @@ export function decode(block: any): Xfer[] {
           amountSun: v.amount,
           type: "TRX",
         });
-      } else if (c.type === "TriggerSmartContract") {
+      } 
+      // 2. Smart Contract Transfers (TRC20)
+      else if (c.type === "TriggerSmartContract") {
+        
+        // ONLY look at USDT. Skip all other tokens.
+        if (v.contract_address !== USDT_CONTRACT_HEX) continue;
+
         const data: string = v.data ?? "";
         // transfer(address,uint256) selector
         if (data.startsWith("a9059cbb") && data.length >= 136) {
@@ -65,7 +75,7 @@ export function decode(block: any): Xfer[] {
             txid: tx.txID,
             from: v.owner_address,
             to: toAddr,
-            amountSun: Number(BigInt("0x" + amtHex)),
+            amountSun: Number(BigInt("0x" + amtHex)), // Note: USDT uses 6 decimals
             type: "TRC20",
           });
         }
