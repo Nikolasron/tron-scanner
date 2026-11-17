@@ -1,0 +1,51 @@
+name: tron-scanner
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: tron-scanner
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: run scanner
+        env:
+          TRONGRID_API_KEY: ${{ secrets.TRONGRID_API_KEY }}
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT: ${{ secrets.TELEGRAM_CHAT }}
+          VALUE_THRESHOLD_SUN: "1000000000"
+          MAX_RUNTIME_SEC: "420"
+          CONFIRMATIONS: "20"
+        run: npx tsx scripts/scan.ts
+
+      - name: commit state
+        if: always()
+        run: |
+          git config user.name  "scanner-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add state/ || true
+          if git diff --quiet --cached; then
+            echo "no state changes"
+            exit 0
+          fi
+          git commit -m "state $(date -u +%FT%TZ)"
+          git pull --rebase --autostash
+          git push
